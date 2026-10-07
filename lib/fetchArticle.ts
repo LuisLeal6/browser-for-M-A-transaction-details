@@ -13,7 +13,7 @@ export async function fetchArticleText(url: string): Promise<string> {
     },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!res.ok) throw new Error(`Could not fetch the article (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Could not open the link (HTTP ${res.status}).`);
 
   const html = await res.text();
   const text = html
@@ -32,7 +32,7 @@ export async function fetchArticleText(url: string): Promise<string> {
 
   if (text.length < 200) {
     throw new Error(
-      "Couldn't read enough text from that page (it may be paywalled). Paste the article text instead."
+      "Couldn't read the article from that link (it may be paywalled)."
     );
   }
   return text;

@@ -25,3 +25,12 @@ button.link { background: none; color: var(--text); padding: 0; font-weight: 400
 .badge.terminated { background: #dc262622; color: #dc2626; } .badge.rumored { background: #d9770622; color: #d97706; }
 .history { list-style: none; padding: 0; margin: 12px 0; }
 .history li { display: flex; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.tab { background: none; color: var(--muted); border-radius: 8px 8px 0 0; padding: 8px 14px; border-bottom: 2px solid transparent; }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.search { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.search input { flex: 1 1 260px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+.search .small { flex-basis: 100%; }
+.fallback { margin-top: 16px; padding: 14px; border-radius: 8px; border: 1px dashed var(--accent); }
+.fallback p { margin: 0 0 10px; }
+.sources { padding-left: 18px; margin: 0; } .sources a { color: var(--accent); word-break: break-word; }
