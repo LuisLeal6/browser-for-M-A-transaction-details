@@ -1,10 +1,39 @@
-import { ApiError, GoogleGenAI } from "@google/genai";
+import { ApiError, GoogleGenAI, type GenerateContentParameters, type GenerateContentResponse } from "@google/genai";
 import { z } from "zod";
 import { DealSchema, type Deal } from "@/lib/schema";
 
 // "gemini-flash-latest" always points at Google's current Flash model (free tier).
 // Override with the GEMINI_MODEL env var if Google renames it.
 const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+// Lighter model to fall back to when the main one is overloaded or out of quota.
+const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || "gemini-flash-lite-latest";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const isBusy = (e: unknown) => e instanceof ApiError && (e.status === 503 || e.status === 500);
+const isOutOfQuota = (e: unknown) => e instanceof ApiError && e.status === 429;
+
+// Free-tier models are often briefly overloaded (503). Retry the main model a couple of
+// times, then try the fallback model before giving up.
+async function generate(
+  ai: GoogleGenAI,
+  params: Omit<GenerateContentParameters, "model">
+): Promise<GenerateContentResponse> {
+  const models = [...new Set([MODEL, FALLBACK_MODEL])];
+  let lastError: unknown;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await ai.models.generateContent({ ...params, model });
+      } catch (e) {
+        lastError = e;
+        if (isOutOfQuota(e)) break; // this model's quota is used up; try the next one
+        if (!isBusy(e)) throw e;
+        if (attempt < 2) await sleep(1000 * 2 ** attempt + Math.random() * 500);
+      }
+    }
+  }
+  throw lastError;
+}
 
 // Drop the "$schema" meta key; Gemini only needs the schema body.
 const { $schema: _meta, ...DEAL_JSON_SCHEMA } = z.toJSONSchema(DealSchema);
@@ -26,8 +55,7 @@ export function createClient() {
 }
 
 export async function extractDeal(ai: GoogleGenAI, article: string, source?: string): Promise<Deal> {
-  const response = await ai.models.generateContent({
-    model: MODEL,
+  const response = await generate(ai, {
     contents: `<article${source ? ` source="${source}"` : ""}>\n${article}\n</article>`,
     config: {
       systemInstruction: EXTRACT_SYSTEM,
@@ -52,8 +80,7 @@ export async function researchDeal(
   ai: GoogleGenAI,
   query: string
 ): Promise<{ brief: string; sources: Source[] }> {
-  const response = await ai.models.generateContent({
-    model: MODEL,
+  const response = await generate(ai, {
     contents: `Deal to research: ${query}`,
     config: {
       systemInstruction: RESEARCH_SYSTEM,
@@ -73,6 +100,9 @@ export async function researchDeal(
 
 export function describeApiError(e: unknown): { message: string; status: number } | null {
   if (!(e instanceof ApiError)) return null;
+  if (e.status === 503 || e.status === 500) {
+    return { message: "Google's free Gemini models are busy right now. Please try again in a minute.", status: 503 };
+  }
   if (e.status === 429) {
     return { message: "Free-tier limit reached — wait a minute (or until tomorrow for the daily limit) and try again.", status: 429 };
   }
