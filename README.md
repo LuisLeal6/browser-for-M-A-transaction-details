@@ -10,15 +10,21 @@ the web for the deal instead, pre-filling a guess from the link.
 ## Deploy to Vercel
 
 1. Import this repo in Vercel (framework preset: Next.js).
-2. Add an environment variable `ANTHROPIC_API_KEY` (from console.anthropic.com).
-3. Make sure web search is enabled for your org in the Anthropic Console
-   (needed for "Search by deal name").
+2. Get a free Gemini API key at https://aistudio.google.com/apikey
+   (no credit card needed).
+3. Add an environment variable `GEMINI_API_KEY` with that key.
 4. Deploy.
+
+Optional: set `GEMINI_MODEL` to pick a specific model (default:
+`gemini-flash-latest`, Google's current free-tier Flash model).
+
+The free tier has daily request limits, which are plenty for a class project;
+if you hit one, the page tells you to wait and retry.
 
 ## Run locally
 
 ```bash
 npm install
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env.local
+echo "GEMINI_API_KEY=your-key" > .env.local
 npm run dev
 ```

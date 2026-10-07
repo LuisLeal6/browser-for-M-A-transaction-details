@@ -1,14 +1,13 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { fetchArticleText } from "@/lib/fetchArticle";
-import { extractDeal, researchDeal, RefusalError, type Source } from "@/lib/claude";
+import { createClient, describeApiError, extractDeal, researchDeal, type Source } from "@/lib/ai";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
     return Response.json(
-      { error: "Server is missing ANTHROPIC_API_KEY. Add it in Vercel → Settings → Environment Variables." },
+      { error: "Server is missing GEMINI_API_KEY. Add it in Vercel → Settings → Environment Variables." },
       { status: 500 }
     );
   }
@@ -27,11 +26,11 @@ export async function POST(req: Request) {
     return Response.json({ error: "Paste an article, a URL, or name a deal" }, { status: 400 });
   }
 
-  const client = new Anthropic(); // reads ANTHROPIC_API_KEY
+  const ai = createClient();
   try {
     if (query) {
-      const { brief, sources } = await researchDeal(client, query);
-      const deal = await extractDeal(client, brief, "web research");
+      const { brief, sources } = await researchDeal(ai, query);
+      const deal = await extractDeal(ai, brief, "web research");
       return Response.json({ deal, sources });
     }
 
@@ -48,24 +47,12 @@ export async function POST(req: Request) {
       }
       sources = [{ title: url, url }];
     }
-    const deal = await extractDeal(client, article, url || undefined);
+    const deal = await extractDeal(ai, article, url || undefined);
     return Response.json({ deal, sources });
   } catch (e) {
-    if (e instanceof RefusalError) {
-      return Response.json({ error: "The model declined to analyse this request." }, { status: 422 });
-    }
-    if (e instanceof Anthropic.RateLimitError) {
-      return Response.json({ error: "Rate limited — try again in a moment." }, { status: 429 });
-    }
-    if (e instanceof Anthropic.AuthenticationError) {
-      return Response.json({ error: "ANTHROPIC_API_KEY is missing or invalid." }, { status: 500 });
-    }
-    if (e instanceof Anthropic.APIError) {
-      return Response.json({ error: `Claude API error: ${e.message}` }, { status: 502 });
-    }
-    if (e instanceof Error) {
-      return Response.json({ error: e.message }, { status: 502 });
-    }
+    const apiError = describeApiError(e);
+    if (apiError) return Response.json({ error: apiError.message }, { status: apiError.status });
+    if (e instanceof Error) return Response.json({ error: e.message }, { status: 502 });
     throw e;
   }
 }

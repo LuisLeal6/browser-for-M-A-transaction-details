@@ -217,7 +217,7 @@ function SearchBox({
       <button type="submit" disabled={loading || !query.trim()}>
         {loading ? "Searching…" : "Search deal"}
       </button>
-      <span className="muted small">Searches the web; takes ~30–60 seconds.</span>
+      <span className="muted small">Searches Google; takes ~10–30 seconds.</span>
     </form>
   );
 }
