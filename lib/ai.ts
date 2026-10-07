@@ -12,19 +12,48 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const isBusy = (e: unknown) => e instanceof ApiError && (e.status === 503 || e.status === 500);
 const isOutOfQuota = (e: unknown) => e instanceof ApiError && e.status === 429;
 
+export class TimeoutError extends Error {
+  constructor() {
+    super("Gemini took too long to answer (the free models may be busy). Please try again.");
+  }
+}
+
+// Wall-clock budget for one request. Vercel kills functions at maxDuration (60s), so we
+// stop retrying well before that and return a proper error instead.
+export class Deadline {
+  private readonly end: number;
+  constructor(ms: number) {
+    this.end = Date.now() + ms;
+  }
+  remaining() {
+    return this.end - Date.now();
+  }
+}
+
+const MIN_CALL_MS = 8_000; // don't start a call with less time than this left
+
 // Free-tier models are often briefly overloaded (503). Retry the main model a couple of
-// times, then try the fallback model before giving up.
+// times, then try the fallback model, all within the request's deadline.
 async function generate(
   ai: GoogleGenAI,
+  deadline: Deadline,
   params: Omit<GenerateContentParameters, "model">
 ): Promise<GenerateContentResponse> {
   const models = [...new Set([MODEL, FALLBACK_MODEL])];
-  let lastError: unknown;
+  let lastError: unknown = new TimeoutError();
   for (const model of models) {
     for (let attempt = 0; attempt < 3; attempt++) {
+      if (deadline.remaining() < MIN_CALL_MS) throw lastError;
       try {
-        return await ai.models.generateContent({ ...params, model });
+        return await ai.models.generateContent({
+          ...params,
+          model,
+          config: { ...params.config, abortSignal: AbortSignal.timeout(deadline.remaining() - 1_000) },
+        });
       } catch (e) {
+        if (e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError")) {
+          throw new TimeoutError();
+        }
         lastError = e;
         if (isOutOfQuota(e)) break; // this model's quota is used up; try the next one
         if (!isBusy(e)) throw e;
@@ -54,8 +83,13 @@ export function createClient() {
   return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 }
 
-export async function extractDeal(ai: GoogleGenAI, article: string, source?: string): Promise<Deal> {
-  const response = await generate(ai, {
+export async function extractDeal(
+  ai: GoogleGenAI,
+  deadline: Deadline,
+  article: string,
+  source?: string
+): Promise<Deal> {
+  const response = await generate(ai, deadline, {
     contents: `<article${source ? ` source="${source}"` : ""}>\n${article}\n</article>`,
     config: {
       systemInstruction: EXTRACT_SYSTEM,
@@ -78,9 +112,10 @@ export async function extractDeal(ai: GoogleGenAI, article: string, source?: str
 // Searches Google for a deal by name and returns a written brief plus the pages it used.
 export async function researchDeal(
   ai: GoogleGenAI,
+  deadline: Deadline,
   query: string
 ): Promise<{ brief: string; sources: Source[] }> {
-  const response = await generate(ai, {
+  const response = await generate(ai, deadline, {
     contents: `Deal to research: ${query}`,
     config: {
       systemInstruction: RESEARCH_SYSTEM,

@@ -74,7 +74,13 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      // Vercel returns a plain-text page if the function crashes or times out.
+      const data = await res.json().catch(() => ({
+        error:
+          res.status === 504
+            ? "The request took too long (the free AI model may be busy). Please try again."
+            : `Server error (${res.status}). Please try again.`,
+      }));
       if (!res.ok) {
         if (data.linkFailed && payload.url) {
           setLinkFailed(true);

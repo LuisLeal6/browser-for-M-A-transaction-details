@@ -1,5 +1,13 @@
 import { fetchArticleText } from "@/lib/fetchArticle";
-import { createClient, describeApiError, extractDeal, researchDeal, type Source } from "@/lib/ai";
+import {
+  createClient,
+  Deadline,
+  describeApiError,
+  extractDeal,
+  researchDeal,
+  TimeoutError,
+  type Source,
+} from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,10 +35,11 @@ export async function POST(req: Request) {
   }
 
   const ai = createClient();
+  const deadline = new Deadline(50_000); // leaves headroom under maxDuration
   try {
     if (query) {
-      const { brief, sources } = await researchDeal(ai, query);
-      const deal = await extractDeal(ai, brief, "web research");
+      const { brief, sources } = await researchDeal(ai, deadline, query);
+      const deal = await extractDeal(ai, deadline, brief, "web research");
       return Response.json({ deal, sources });
     }
 
@@ -47,9 +56,10 @@ export async function POST(req: Request) {
       }
       sources = [{ title: url, url }];
     }
-    const deal = await extractDeal(ai, article, url || undefined);
+    const deal = await extractDeal(ai, deadline, article, url || undefined);
     return Response.json({ deal, sources });
   } catch (e) {
+    if (e instanceof TimeoutError) return Response.json({ error: e.message }, { status: 504 });
     const apiError = describeApiError(e);
     if (apiError) return Response.json({ error: apiError.message }, { status: apiError.status });
     if (e instanceof Error) return Response.json({ error: e.message }, { status: 502 });
