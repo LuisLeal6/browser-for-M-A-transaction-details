@@ -139,15 +139,8 @@ export function describeApiError(e: unknown): { message: string; status: number 
     return { message: "Google's free Gemini models are busy right now. Please try again in a minute.", status: 503 };
   }
   if (e.status === 429) {
-    // Google's message names the exact quota hit (per-minute vs per-day, and the limit).
-    const quota = e.message.match(/Quota exceeded for metric:[^,]*,\s*limit:\s*\d+[^.]*/i)?.[0];
-    const daily = /PerDay/i.test(e.message);
     return {
-      message:
-        (daily
-          ? "Daily free-tier limit reached — it resets around midnight Pacific time."
-          : "Free-tier limit reached — wait a minute and try again.") +
-        (quota ? ` (Google: ${quota})` : ` (Google: ${e.message.slice(0, 300)})`),
+      message: "You've exceeded the maximum free limit for the day. Please try again tomorrow.",
       status: 429,
     };
   }
